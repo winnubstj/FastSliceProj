@@ -22,6 +22,17 @@ else
 end
 fprintf('\nDone');
 
+%% Get lattice position and file location all tiles.
+contents = structfun(@(x) x,jsonData.tileMap,'UniformOutput',false);
+contents = struct2cell(contents);
+nTiles = cellfun(@(x) size(x,2),contents); %only days that have tiles.
+contents = contents(nTiles>1);
+contents = horzcat(contents{:});
+latPos = cellfun(@(x) x.contents.latticePosition,contents); % get Lattice position.
+latPos = [latPos.x;latPos.y;latPos.z]';
+fileLoc = cellfun(@(x) fullfile(jsonData.monitor.location,x.relativePath),contents,'UniformOutput',false)'; % get file position.
+
+a=1;
 
 end
 

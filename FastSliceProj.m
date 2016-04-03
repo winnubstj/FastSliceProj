@@ -1,9 +1,11 @@
 function [ ] = FastSliceProj(  )
 %FastSliceProj Takes JSON file from Acquisition dashboard and generates projection off all stacks belonging to same slice.
-% Dependency: fastProtoBuf
+% Dependency: fastProtoBuf, readTifFast, writeTifFast
 
 tileDir = 'Y:\mousebrainmicro\acquisition\3-21-2016\Data\';
-reqZ = 172;
+tempDir = 'C:\Users\winnubstj\Desktop\Temp';
+channels = [0,1];
+reqZ = 167;
 
 %% load and convert Json file to .mat
 fprintf('\n');
@@ -22,7 +24,7 @@ else
     fprintf('Loading pre-parsed Json file..\n');
     load(matFile);
 end
-fprintf('Done\n');
+fprintf('Done!\n');
 
 %% Get lattice position and file location all tiles.
 contents = structfun(@(x) x,jsonData.tileMap,'UniformOutput',false);
@@ -56,13 +58,47 @@ ind = find(latPos(:,3)>0,1);
 FOV = fastProtoBuf( fullfile(fileLoc{ind},[fileLoc{ind}(end-4:end),'-ngc.microscope']), {'x_size_um','y_size_um','z_size_um','x_overlap_um','y_overlap_um','z_overlap_um'});
 FOV.x_size_pix = contents{ind}.contents.imageContents{1,1}.width;
 FOV.y_size_pix = contents{ind}.contents.imageContents{1,1}.height;
+FOV.z_size_pix = contents{ind}.contents.imageContents{1,1}.frameCount;
 FOV.x_res = FOV.x_size_um/FOV.x_size_pix;
 FOV.y_res = FOV.y_size_um/FOV.y_size_pix;
 
-
 %% Get general dimensions result file.
-fileLoc(latPos(:,3)==reqZ,:);
-latPos(latPos(:,3)==reqZ,:);
+fileLoc = fileLoc(latPos(:,3)==reqZ,:);
+latPos = latPos(latPos(:,3)==reqZ,:);
+latPos(:,1) = latPos(:,1)-min(latPos(:,1))+1;
+latPos(:,2) = latPos(:,2)-min(latPos(:,2))+1;
+tileWidth = max(latPos(:,2)) - min(latPos(:,2));
+tileHeight = max(latPos(:,1)) - min(latPos(:,1));
+fprintf('Proj. will consist of %i tiles (%i width and %i height)\n',length(fileLoc),tileWidth,tileHeight);
+% Display tile map so user can check for missing.
+latMat = zeros(max(latPos(:,1)),max(latPos(:,2)));
+latMat(sub2ind(size(latMat),latPos(:,1),latPos(:,2)))=1;
+figure(); imshow(latMat,[]);
 
+%% Create Projections
+if isempty(dir(tempDir)),mkdir(tempDir); end
+fprintf('Starting Projection cycle\n');
+IStack = zeros([FOV.y_size_pix,FOV.x_size_pix,FOV.z_size_pix],'uint16');
+for iTile = 1:40 %size(fileLoc,1)
+    cTileDir = fullfile(tempDir,fileLoc{iTile}(end-18:end));
+    if isempty(dir(cTileDir)),mkdir(cTileDir); end
+    % Check both channels.
+    for iChan = channels
+       fprintf('%s - [%i/%i Chan: %i] ',datestr(now,'HH:MM'), iTile,size(fileLoc,1),iChan);
+       %check if file already excists.
+       cTileSource = fullfile(fileLoc{iTile},[fileLoc{iTile}(end-4:end),'-ngc.',num2str(iChan),'.tif']);
+       cTileDest = fullfile(cTileDir,[cTileDir(end-4:end),'-ngc.',num2str(iChan),'.tif']);
+       if isempty(dir(cTileDest))
+           fprintf('Creating Projection\n');
+           I = readTifFast(cTileSource,[FOV.y_size_pix,FOV.x_size_pix],[1:FOV.z_size_pix],'uint16');
+           I = max(I,[],3);
+           writeTifFast(I,cTileDest,'uint16');
+       else
+           fprintf('Reading Stored Projection\n');
+           I = readTifFast(cTileDest,[FOV.y_size_pix,FOV.x_size_pix],1,'uint16');
+       end
+       IStack(:,:,iTile) = I;
+    end
+end
 end
 

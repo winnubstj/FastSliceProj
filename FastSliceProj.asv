@@ -34,14 +34,21 @@ latPos = [latPos.x;latPos.y;latPos.z]';
 fileLoc = cellfun(@(x) fullfile(jsonData.monitor.location,x.relativePath),contents,'UniformOutput',false)'; % get file position.
 
 %% Get rid of duplicates (use most recent)
-latMat = zeros(max(latPos(:,1)),max(latPos(:,1)),max(latPos(:,1)));
+latMat = zeros(max(latPos(:,1)),max(latPos(:,2)),max(latPos(:,3)));
 for iTile = 1:size(latPos,1)
     if latPos(iTile,1)>0
         latMat(latPos(iTile,1),latPos(iTile,2),latPos(iTile,3)) = latMat(latPos(iTile,1),latPos(iTile,2),latPos(iTile,3)) +1;
     end
 end
-
-
+% find latpos with duplicates.
+[x,y,z] = ind2sub(size(latMat),find(latMat>1));removeList = [];
+% Select earliest tile for removal.
+for iTile = 1:size(x,1)
+   ind = find(latPos(:,1)==x(iTile) &  latPos(:,2)==y(iTile) &  latPos(:,3)==z(iTile));
+   removeList = [removeList; min(ind)];
+end
+fileLoc(removeList) = [];
+latPos(removeList) = [];
 %% Get field of view info from protobuf file.
 ind = find(latPos(:,3)>0,1);
 FOV = fastProtoBuf( fullfile(fileLoc{ind},[fileLoc{ind}(end-4:end),'-ngc.microscope']), {'x_size_um','y_size_um','z_size_um','x_overlap_um','y_overlap_um','z_overlap_um'});

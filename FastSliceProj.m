@@ -6,6 +6,7 @@ tileDir = 'Y:\mousebrainmicro\acquisition\3-21-2016\Data\';
 tempDir = 'C:\Users\winnubstj\Desktop\Temp';
 channels = [0,1];
 reqZ = 167;
+downSample = 3;
 
 %% load and convert Json file to .mat
 fprintf('\n');
@@ -61,6 +62,8 @@ FOV.y_size_pix = contents{ind}.contents.imageContents{1,1}.height;
 FOV.z_size_pix = contents{ind}.contents.imageContents{1,1}.frameCount;
 FOV.x_res = FOV.x_size_um/FOV.x_size_pix;
 FOV.y_res = FOV.y_size_um/FOV.y_size_pix;
+FOV.x_overlap_pix = FOV.x_overlap_um/FOV.x_res;
+FOV.y_overlap_pix = FOV.y_overlap_um/FOV.y_res;
 
 %% Get general dimensions result file.
 fileLoc = fileLoc(latPos(:,3)==reqZ,:);
@@ -78,10 +81,13 @@ figure(); imshow(latMat,[]);
 %% Create Projections
 if isempty(dir(tempDir)),mkdir(tempDir); end
 fprintf('Starting Projection cycle\n');
-IStack = zeros([FOV.y_size_pix,FOV.x_size_pix,FOV.z_size_pix],'uint16');
+IStack = zeros([FOV.y_size_pix,FOV.x_size_pix,size(fileLoc,1),length(channels)],'uint16');
+mmPos = [];
 for iTile = 1:40 %size(fileLoc,1)
     cTileDir = fullfile(tempDir,fileLoc{iTile}(end-18:end));
     if isempty(dir(cTileDir)),mkdir(cTileDir); end
+    pos = fastProtoBuf( fullfile(fileLoc{iTile},[fileLoc{iTile}(end-4:end),'-ngc.acquisition']), {'x_mm','y_mm','z_mm'});
+    mmPos = [mmPos;pos.x_mm,pos.y_mm,pos.z_mm];
     % Check both channels.
     for iChan = channels
        fprintf('%s - [%i/%i Chan: %i] ',datestr(now,'HH:MM'), iTile,size(fileLoc,1),iChan);
@@ -97,8 +103,36 @@ for iTile = 1:40 %size(fileLoc,1)
            fprintf('Reading Stored Projection\n');
            I = readTifFast(cTileDest,[FOV.y_size_pix,FOV.x_size_pix],1,'uint16');
        end
-       IStack(:,:,iTile) = I;
+       IStack(:,:,iTile,iChan+1) = I;
     end
 end
+
+%% Blend tiles into full image
+% Create spatial referencing object.
+XExtentmm = [min(mmPos(:,1)),max(mmPos(:,1))+(FOV.x_size_um*10^-3) ];
+YExtentmm = [min(mmPos(:,2)),max(mmPos(:,2))+(FOV.y_size_um*10^-3)];
+XExtentPix = round((((XExtentmm(2)-XExtentmm(1))*1000)/FOV.x_res)/downSample);
+YExtentPix = round((((YExtentmm(2)-YExtentmm(1))*1000)/FOV.y_res)/downSample);
+resI = zeros(XExtentPix,YExtentPix,'uint16');
+ROUT = imref2d(size(resI));
+ROUT.XWorldLimits = XExtentmm;
+ROUT.YWorldLimits = YExtentmm;
+
+for iChan = 1:length(channels)
+    resI = zeros(XExtentPix,YExtentPix,'uint16');
+    for iTile = 1:40
+        tform = affine2d([1 0 0; 0 1 0; 0 0 1]);% Can add stage displacement object here
+        RITile = imref2d([size(IStack,1), size(IStack,2)],[mmPos(iTile,1), mmPos(iTile,1)+(FOV.x_size_um*10^-3)],[mmPos(iTile,2), mmPos(iTile,2)+(FOV.y_size_um*10^-3)]) ; 
+        IC = fliplr(flipud(IStack(:,:,iTile,iChan)));
+
+        [J,RJ] = imwarp(IC,RITile,tform,'OutputView',ROUT);
+        resI = max(cat(3,resI,J),[],3);
+        iTile
+    end
+    imwrite(resI,fullfile(tempDir,['res.',num2str(iChan),'.tif']));
+end
+
+figure(); imshow(resI,[]);
+imwrite(resI,fullfile(tempDir,'res.tif'));
 end
 

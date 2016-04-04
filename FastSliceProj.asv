@@ -81,8 +81,8 @@ figure(); imshow(latMat,[]);
 %% Create Projections
 if isempty(dir(tempDir)),mkdir(tempDir); end
 fprintf('Starting Projection cycle\n');
-nTiles = size(fileLoc,1);
-% nTiles = 73;
+% nTiles = size(fileLoc,1);
+nTiles = 73;
 IStack = zeros([FOV.y_size_pix,FOV.x_size_pix,nTiles,length(channels)],'uint16');
 mmPos = [];
 for iTile = 1:nTiles
@@ -111,12 +111,11 @@ end
 
 %% Uneven illumination correction.
 BG = squeeze(nanmedian(IStack(:,:,:,1),3));
+figure(); imshow(BG,[]);
 BG = double(BG);
 BG = BG./repmat(max(max(BG)),size(BG,1),size(BG,2));
-BG = repmat(1,size(BG,1),size(BG,2))./BG;
-% figure(); imshow(BG,[]);
-% Temp nutil I put in overlap correct.
-% BG(BG>1.15)=1;
+BG = repmat(2,size(BG,1),size(BG,2))- BG;
+BG = BG(
 %% Blend tiles into full image
 % Create spatial referencing object.
 XExtentmm = [min(mmPos(:,1)),max(mmPos(:,1))+(FOV.x_size_um*10^-3) ];
@@ -134,9 +133,7 @@ for iChan = 1:length(channels)
         tform = affine2d([1 0 0; 0 1 0; 0 0 1]);% Can add stage displacement object here
         RITile = imref2d([size(IStack,1), size(IStack,2)],[mmPos(iTile,1), mmPos(iTile,1)+(FOV.x_size_um*10^-3)],[mmPos(iTile,2), mmPos(iTile,2)+(FOV.y_size_um*10^-3)]) ; 
         IC = fliplr(flipud(IStack(:,:,iTile,iChan)));
-%         IC =double (IC);
-%         % Block overlap. 
-%         IC = uint16(IC.*BG);
+
         [J,RJ] = imwarp(IC,RITile,tform,'OutputView',ROUT);
         resI = max(cat(3,resI,J),[],3);
         iTile

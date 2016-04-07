@@ -5,7 +5,8 @@ function [ ] = FastSliceProj(  )
 tileDir = 'Y:\mousebrainmicro\acquisition\3-21-2016\Data\';
 tempDir = 'C:\Users\winnubstj\Desktop\Temp';
 channels = [0,1];
-reqZ = 167;
+reqZ = 187;
+frames = 100:150;
 downSample = 2;
 
 %% load and convert Json file to .mat
@@ -98,7 +99,7 @@ for iTile = 1:nTiles
        cTileDest = fullfile(cTileDir,[cTileDir(end-4:end),'-ngc.',num2str(iChan),'.tif']);
        if isempty(dir(cTileDest))
            fprintf('Creating Projection\n');
-           I = readTifFast(cTileSource,[FOV.y_size_pix,FOV.x_size_pix],[1:FOV.z_size_pix],'uint16');
+           I = readTifFast(cTileSource,[FOV.y_size_pix,FOV.x_size_pix],frames,'uint16');
            I = max(I,[],3);
            writeTifFast(I,cTileDest,'uint16');
        else
@@ -116,7 +117,7 @@ BG = BG./repmat(max(max(BG)),size(BG,1),size(BG,2));
 BG = repmat(1,size(BG,1),size(BG,2))./BG;
 % figure(); imshow(BG,[]);
 % Temp nutil I put in overlap correct.
-% BG(BG>1.15)=1;
+BG(BG>1.15)=1;
 %% Blend tiles into full image
 % Create spatial referencing object.
 XExtentmm = [min(mmPos(:,1)),max(mmPos(:,1))+(FOV.x_size_um*10^-3) ];
@@ -134,9 +135,9 @@ for iChan = 1:length(channels)
         tform = affine2d([1 0 0; 0 1 0; 0 0 1]);% Can add stage displacement object here
         RITile = imref2d([size(IStack,1), size(IStack,2)],[mmPos(iTile,1), mmPos(iTile,1)+(FOV.x_size_um*10^-3)],[mmPos(iTile,2), mmPos(iTile,2)+(FOV.y_size_um*10^-3)]) ; 
         IC = fliplr(flipud(IStack(:,:,iTile,iChan)));
-%         IC =double (IC);
-%         % Block overlap. 
-%         IC = uint16(IC.*BG);
+        IC =double (IC);
+        % Block overlap. 
+        IC = uint16(IC.*BG);
         [J,RJ] = imwarp(IC,RITile,tform,'OutputView',ROUT);
         resI = max(cat(3,resI,J),[],3);
         iTile
